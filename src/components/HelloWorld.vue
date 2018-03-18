@@ -3,7 +3,8 @@
 
 <gmap-map
     :center="center"
-    :zoom="5"
+    :zoom="zoom"
+    ref="mmm"
     style="width: 80%; height: 500px"
   >
 
@@ -16,7 +17,7 @@
   
   <gmap-marker
       :key="index"
-      v-for="(m, index) in markers"
+      v-for="(m, index) in visibleMarkers"
       :position="m.position"
       :clickable="true"
       :draggable="true"
@@ -26,12 +27,13 @@
   </gmap-map>
     
     <h1>Images on a map</h1>
+    
+    <input type="file" multiple @change="onFileChange">
+    <p>
+      {{ fileCount }}
+    </p>
 
-     <input type="file" multiple @change="onFileChange">
-     <p>
-       {{ fileCount }}
-     </p>
-     
+    <button class="btn btn-large" @click="play" value="woop">Try to play</button> 
   </div>
 </template>
 
@@ -47,6 +49,7 @@ export default {
     return {
       markers: [],
       center: { lat: -19.8934596, lng: -44.0586543 },
+      zoom: 5,
       fileCount: 0,
       path: [],
       infoWindow: {
@@ -67,12 +70,45 @@ export default {
     }
   },
   created () {
-  this.$getLocation()
-    .then(coordinates => {
-      this.center = coordinates;
-    });
+    this.$getLocation()
+      .then(coordinates => {
+        this.center = coordinates;
+      });
+  },
+  computed: {
+    visibleMarkers() {
+      return this.markers.filter((m) => m.visible);
+    }
   },
   methods: {
+    play() {
+
+      this.markers.forEach(m => m.visible = false);
+      this.path.splice(0, this.path.length);
+
+      let draw = function(index) {
+        if(index > this.markers.length)
+          return;
+
+        let currentMarker = this.markers[index];
+         this.$refs.mmm.panTo(currentMarker.position);
+        // this.center = currentMarker.position;
+        
+        currentMarker.visible = true;
+        this.path.push(currentMarker.position);
+        
+        setTimeout(() => {
+          draw(index+1);
+        }, 5000)
+      }.bind(this);
+
+      draw(0);
+
+      // reset everything
+      // step by step show marker and image
+      // draw line to next marker?
+
+    },
     arrayBufferToBase64(buffer) {
       let binary = '';
       const bytes = new Uint8Array(buffer);
@@ -87,7 +123,6 @@ export default {
       var files = e.target.files || e.dataTransfer.files;
       if (!files.length)
         return;
-
 
       var promises = [];
 
@@ -130,9 +165,11 @@ export default {
 
         let sortImages = images.filter(i => i.parsed).sort((a, b) => a > b);
         this.path = sortImages.map(i => i.position);
+        console.log(this.path);
         
         sortImages.forEach((image) => {
           this.markers.push({
+            visible: true,
             position: image.position,
             infoText: '<div><img style="width:100px;height:100px" src=' + image.base64 + ' />Image #' + image.index + ' <b>' + image.date + '</b></div>'
           });
