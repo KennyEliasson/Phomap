@@ -24,4 +24,15 @@ npm run unit
 npm test
 ```
 
+## Deploy
+
+``` bash
+# install firebase cli
+npm install -g firebase-tools
+# login to firebase
+firebase login
+# deploy code
+firebase deploy
+```
+
 For a detailed explanation on how things work, check out the [guide](http://vuejs-templates.github.io/webpack/) and [docs for vue-loader](http://vuejs.github.io/vue-loader).
