@@ -38,10 +38,9 @@
 </template>
 
 <script>
-import * as ExifReader from 'exifreader'
-import date from 'date-and-time'
 import onedriveauth from 'onedrive-auth'
-
+import delay from 'delay'
+import Image from '@/Image'
 
 export default {
   name: 'HelloWorld',
@@ -49,7 +48,7 @@ export default {
     return {
       markers: [],
       center: { lat: -19.8934596, lng: -44.0586543 },
-      zoom: 5,
+      zoom: 15,
       fileCount: 0,
       path: [],
       infoWindow: {
@@ -81,42 +80,54 @@ export default {
     }
   },
   methods: {
+    fluidZoom(maxFluidZoom) {
+      if(maxFluidZoom >= 15) 
+        return 0;
+    
+      this.zoom = maxFluidZoom;
+      maxFluidZoom = maxFluidZoom+2;
+      setTimeout(() => this.fluidZoom(maxFluidZoom), 500);
+    },
     play() {
-
       this.markers.forEach(m => m.visible = false);
       this.path.splice(0, this.path.length);
 
-      let draw = function(index) {
+      let draw = (index) => {
         if(index > this.markers.length)
           return;
 
-        let currentMarker = this.markers[index];
-         this.$refs.mmm.panTo(currentMarker.position);
-        // this.center = currentMarker.position;
-        
+        let currentMarker =this.markers[index];
         currentMarker.visible = true;
         this.path.push(currentMarker.position);
-        
-        setTimeout(() => {
-          draw(index+1);
-        }, 5000)
-      }.bind(this);
+        this.toggleInfoWindow(currentMarker, index);
+
+        if(index === 0) {
+          this.$refs.mmm.panTo(currentMarker.position);
+          delay(5000).then(() => {
+            draw(index+1);
+          })
+        } else {
+          var prevMarker = this.markers[index-1];
+          let b = new google.maps.LatLngBounds();
+          b.extend(prevMarker.position);
+          b.extend(currentMarker.position);
+            
+          this.$refs.mmm.fitBounds(b);
+            
+          delay(1000).then(() => {
+            this.$refs.mmm.panTo(currentMarker.position);
+            delay(2000).then(() => {
+              var newZoom = this.$refs.mmm.$mapObject.getZoom();
+              this.fluidZoom(newZoom);
+              delay(5000).then(() => {
+                draw(index+1);
+              })
+            })
+          });
+        }
+      };
 
       draw(0);
-
-      // reset everything
-      // step by step show marker and image
-      // draw line to next marker?
-
-    },
-    arrayBufferToBase64(buffer) {
-      let binary = '';
-      const bytes = new Uint8Array(buffer);
-      const len = bytes.byteLength;
-      for (let i = 0; i < len; i++) {
-        binary += String.fromCharCode(bytes[i]);
-      }
-      return window.btoa(binary);
     },
     onFileChange(e) {
       var self = this;
@@ -125,7 +136,6 @@ export default {
         return;
 
       var promises = [];
-
       var paths = [];
 
       for(let i = 0; i < files.length; i++) {
@@ -133,30 +143,9 @@ export default {
         let currentFile = files[i];
         promises.push(new Promise((resolve, reject) => {
           let reader = new FileReader();
-          reader.onload = function(e) {
-            // base64reader.readAsDataURL(currentFile);
-            // Hardcoded the prefix for JPEG for now, good to so we can skip multiple filereaders
-            const base64 = "data:image/jpeg;base64," + self.arrayBufferToBase64(e.target.result);
-
-            const tags = ExifReader.load(e.target.result);
-            // console.log("tags", tags);
-
-            const image = {
-              index: i,
-              orientation: tags.Orientation,
-              base64: base64,
-              parsed: false
-            }
-
-            if(tags.DateTime && tags.GPSLatitude) {
-              image.date = date.parse(tags.DateTime.description, "YYYY:MM:DD HH:mm:ss");
-              image.position = { lat: tags.GPSLatitude.description, lng: tags.GPSLongitude.description };
-              image.parsed = true;
-            }
-
-            resolve(image);
+          reader.onload = function(e) {         
+            resolve(Image.load(e.target.result, i));
           };
-
           reader.readAsArrayBuffer(currentFile);
         }));
       }
@@ -165,13 +154,12 @@ export default {
 
         let sortImages = images.filter(i => i.parsed).sort((a, b) => a > b);
         this.path = sortImages.map(i => i.position);
-        console.log(this.path);
         
         sortImages.forEach((image) => {
           this.markers.push({
             visible: true,
             position: image.position,
-            infoText: '<div><img style="width:100px;height:100px" src=' + image.base64 + ' />Image #' + image.index + ' <b>' + image.date + '</b></div>'
+            infoText: '<div><img style="width:200px;height:200px" src=' + image.base64 + ' /><br/><b>' + image.dateString + '</b></div>'
           });
         });
         
@@ -188,7 +176,6 @@ export default {
       } else {       //if different marker set infowindow to open and reset current marker index
         this.infoWindow.open = true;
         this.infoWindow.currentMidx = idx;
-
       }
     }
   }
